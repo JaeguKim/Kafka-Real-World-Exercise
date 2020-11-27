@@ -26,8 +26,8 @@ public class TestProducer {
     }
 
     @Test
-    public void testProduce() {
-        Assertions.assertTrue(producer.produce().size() > 0);
+    public void testGenerateData() {
+        Assertions.assertTrue(producer.generateData().size() > 0);
     }
 
 }

@@ -8,6 +8,6 @@ public class Test {
         String token = "927520294188630018-gwoYkQZIWBIpOx2nXspuiTJBAfzd2Xw";
         String tokenSecret = "LJIssvKAHx3EIZumIS2SG531OhjMJlPPkrQN0rKFHiBnB";
         TwitterProducer producer = new TwitterProducer(consumerKey,consumerSecret,token,tokenSecret);
-        producer.produce();
+        producer.produce("twitter_topic");
     }
 }
