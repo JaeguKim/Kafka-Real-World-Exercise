@@ -17,7 +17,13 @@ public class TestConsumer {
     @Test
     public void testGetMessages() {
         List<String> messages = consumer.getMessages("twitter_topic");
-        Assertions.assertTrue(messages.size() >1);
+        Assertions.assertTrue(messages.size() >= 0);
     }
+
+    @Test
+    public void testConsumeToElasticsearch() {
+        consumer.consume("twitter_topic");
+    }
+
 
 }

@@ -1,18 +1,26 @@
 package com.github.twitterProducer;
 
+import org.apache.http.HttpHost;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.clients.consumer.ConsumerRecords;
 import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.common.serialization.StringDeserializer;
+import org.elasticsearch.ElasticsearchException;
+import org.elasticsearch.action.ActionListener;
+import org.elasticsearch.action.DocWriteResponse;
+import org.elasticsearch.action.index.IndexRequest;
+import org.elasticsearch.action.index.IndexResponse;
+import org.elasticsearch.client.RequestOptions;
+import org.elasticsearch.client.RestClient;
+import org.elasticsearch.client.RestHighLevelClient;
+import org.elasticsearch.common.xcontent.XContent;
+import org.elasticsearch.common.xcontent.XContentType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.time.Duration;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Properties;
+import java.util.*;
 
 public class TwitterConsumer {
 
@@ -45,10 +53,10 @@ public class TwitterConsumer {
         while (timeOffset <= totalDuration) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(10)); // new in kafka 2.0.0
             for (ConsumerRecord<String, String> record : records) {
-                String message = String.format("Key : %s, Value : %s, Partition: %d, Offset : %d",record.key(),record.value(),record.partition(),record.offset());
+                //logger.info("reading record : " + record.value());
                 //logger.info("Key: " + record.key() + ", Value: " + record.value());
                 //logger.info("Partition: " + record.partition() + ", Offset: " + record.offset());
-                messages.add(message);
+                messages.add(record.value());
             }
             timeOffset += 10;
         }
@@ -57,5 +65,45 @@ public class TwitterConsumer {
 
     public void consume(String topic) {
         Logger logger = LoggerFactory.getLogger(TwitterConsumer.class.getName());
+        List<String> messages = getMessages(topic);
+        RestHighLevelClient client = new RestHighLevelClient(
+                RestClient.builder(
+                        new HttpHost("localhost", 9200, "http"),
+                        new HttpHost("localhost", 9201, "http")));
+        ActionListener<IndexResponse> listener = new ActionListener<IndexResponse>() {
+            @Override
+            public void onResponse(IndexResponse indexResponse) {
+                String index = indexResponse.getIndex();
+                String type = indexResponse.getType();
+                String id = indexResponse.getId();
+                long version = indexResponse.getVersion();
+                logger.info(String.format("result : %s, index : %s, type : %s, id : %s"),indexResponse.getResult(),index,type,id);
+                if (indexResponse.getResult() == DocWriteResponse.Result.CREATED) {
+                    logger.info("document is created!");
+                }
+
+            }
+
+            @Override
+            public void onFailure(Exception e) {
+                logger.error(e.toString());
+            }
+        };
+
+        logger.info("message size : " + messages.size());
+        for (int i=0; i < messages.size(); i++){
+            //Map<String, Object> jsonMap = new HashMap<>();
+            IndexRequest request = new IndexRequest("twitterposts","doc").source(messages.get(i), XContentType.JSON);
+            logger.info("indexing : " + messages.get(i));
+            client.indexAsync(request, RequestOptions.DEFAULT, listener);
+        }
+
+        synchronized (this) {
+            try {
+                wait(3000);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+        }
     }
 }
