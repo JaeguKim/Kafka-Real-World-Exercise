@@ -31,6 +31,9 @@ public class TwitterProducer {
     final String tokenSecret;
     final int messageCnt = 10;
 
+    Logger logger = LoggerFactory.getLogger(TwitterProducer.class.getName());
+    List<String> terms = Lists.newArrayList("twitter", "api");
+
     public TwitterProducer(String consumerKey, String consumerSecret, String token, String tokenSecret) {
         this.consumerKey = consumerKey;
         this.consumerSecret = consumerSecret;
@@ -40,6 +43,18 @@ public class TwitterProducer {
 
     public void produce(String topic) {
         List<String> data = generateData();
+        KafkaProducer<String, String> producer = createKafkaProducer();
+
+        for (int i=0; i<data.size(); i++){
+            ProducerRecord<String, String> record = new ProducerRecord<String, String>(topic,data.get(i));
+            producer.send(record);
+        }
+
+        producer.flush();
+        producer.close();
+    }
+
+    public KafkaProducer<String,String> createKafkaProducer() {
         String bootstrapServers = "127.0.0.1:9092";
 
         // create Producer properties
@@ -48,27 +63,23 @@ public class TwitterProducer {
         properties.setProperty(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class.getName());
         properties.setProperty(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG,StringSerializer.class.getName());
 
+        // create safe Producer
+        properties.setProperty(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG,"true");
+        properties.setProperty(ProducerConfig.ACKS_CONFIG, "all");
+        properties.setProperty(ProducerConfig.RETRIES_CONFIG, Integer.toString(Integer.MAX_VALUE));
+        properties.setProperty(ProducerConfig.MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION, "5"); // kafka 2.0 >= 1.1 so wer can keep this as 5. Use 1 otherwise
+
+        // high throughput producer (at the expense of a bit of latency and CPU usage)
+        properties.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
+        properties.setProperty(ProducerConfig.LINGER_MS_CONFIG, "20");
+        properties.setProperty(ProducerConfig.BATCH_SIZE_CONFIG, Integer.toString(32*1024)); // 32KB batch size
+
         // create the producer
         KafkaProducer<String, String> producer = new KafkaProducer<String, String>(properties);
-
-        for (int i=0; i<data.size(); i++){
-            //  create a producer record
-            ProducerRecord<String, String> record = new ProducerRecord<String, String>(topic,data.get(i));
-
-            // send data - asynchronous
-            producer.send(record);
-        }
-
-        // flush data
-        producer.flush();
-        producer.close();
+        return producer;
     }
 
     public List<String> generateData() {
-
-        Logger logger = LoggerFactory.getLogger(Test.class.getName());
-
-        /** Set up your blocking queues: Be sure to size these properly based on expected TPS of your stream */
         BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(100000);
         Client hosebirdClient = connectToTwitter(msgQueue);
         // on a different thread, or multiple different threads....
@@ -91,13 +102,7 @@ public class TwitterProducer {
         /** Declare the host you want to connect to, the endpoint, and authentication (basic auth or oauth) */
         Hosts hosebirdHosts = new HttpHosts(Constants.STREAM_HOST);
         StatusesFilterEndpoint hosebirdEndpoint = new StatusesFilterEndpoint();
-// Optional: set up some followings and track terms
-        List<Long> followings = Lists.newArrayList(1234L, 566788L);
-        List<String> terms = Lists.newArrayList("twitter", "api");
-        hosebirdEndpoint.followings(followings);
         hosebirdEndpoint.trackTerms(terms);
-
-// These secrets should be read from a config file
         Authentication hosebirdAuth = new OAuth1(consumerKey, consumerSecret, token, tokenSecret);
 
         ClientBuilder builder = new ClientBuilder()
@@ -107,7 +112,6 @@ public class TwitterProducer {
                 .processor(new StringDelimitedProcessor(msgQueue));
 
         Client hosebirdClient = builder.build();
-// Attempts to establish a connection.
         hosebirdClient.connect();
         return hosebirdClient;
     }
