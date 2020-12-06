@@ -81,15 +81,17 @@ public class TwitterProducer {
 
     public List<String> generateData() {
         BlockingQueue<String> msgQueue = new LinkedBlockingQueue<String>(100000);
-        Client hosebirdClient = connectToTwitter(msgQueue);
+        Client client = connectToTwitter(msgQueue);
         // on a different thread, or multiple different threads....
         List<String> messages = new ArrayList<String>();
-        while (!hosebirdClient.isDone() && messages.size() < messageCnt) {
+        while (!client.isDone() && messages.size() < messageCnt) {
             String msg = null;
             try {
-                msg = msgQueue.take();
+                msg = msgQueue.take(); //blocking 방식
+                //poll()는 non-blocking 방식이다, 그러나 시간을 파라미터로 전달시 해당시간 주기마다 queue에 데이터가 available한지 체크할수 있다.
             } catch (InterruptedException e) {
                 e.printStackTrace();
+                client.stop();
             }
             logger.info(msg);
             messages.add(msg);

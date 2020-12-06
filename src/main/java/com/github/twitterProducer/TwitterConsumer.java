@@ -34,7 +34,6 @@ public class TwitterConsumer {
     }
 
     public List<String> getMessages(String topic) {
-        // create consumer configs
         Properties properties = new Properties();
         properties.setProperty(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         properties.setProperty(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class.getName());
@@ -42,20 +41,14 @@ public class TwitterConsumer {
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, groupId);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        // create consumer
         KafkaConsumer<String, String> consumer = new KafkaConsumer<String, String>(properties);
 
-        // subscribe to our topic(s)
         consumer.subscribe(Arrays.asList(topic));
         List<String> messages = new ArrayList<>();
-        // poll for new data
         int timeOffset = 0;
         while (timeOffset <= totalDuration) {
             ConsumerRecords<String, String> records = consumer.poll(Duration.ofMillis(10)); // new in kafka 2.0.0
             for (ConsumerRecord<String, String> record : records) {
-                //logger.info("reading record : " + record.value());
-                //logger.info("Key: " + record.key() + ", Value: " + record.value());
-                //logger.info("Partition: " + record.partition() + ", Offset: " + record.offset());
                 messages.add(record.value());
             }
             timeOffset += 10;
@@ -73,15 +66,10 @@ public class TwitterConsumer {
         ActionListener<IndexResponse> listener = new ActionListener<IndexResponse>() {
             @Override
             public void onResponse(IndexResponse indexResponse) {
-                String index = indexResponse.getIndex();
-                String type = indexResponse.getType();
-                String id = indexResponse.getId();
-                long version = indexResponse.getVersion();
-                logger.info(String.format("result : %s, index : %s, type : %s, id : %s"),indexResponse.getResult(),index,type,id);
+                logger.info(indexResponse.getId());
                 if (indexResponse.getResult() == DocWriteResponse.Result.CREATED) {
                     logger.info("document is created!");
                 }
-
             }
 
             @Override
@@ -92,7 +80,6 @@ public class TwitterConsumer {
 
         logger.info("message size : " + messages.size());
         for (int i=0; i < messages.size(); i++){
-            //Map<String, Object> jsonMap = new HashMap<>();
             IndexRequest request = new IndexRequest("twitterposts","doc").source(messages.get(i), XContentType.JSON);
             logger.info("indexing : " + messages.get(i));
             client.indexAsync(request, RequestOptions.DEFAULT, listener);
